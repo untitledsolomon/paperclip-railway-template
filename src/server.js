@@ -121,11 +121,12 @@ function setupHtml() {
       <div class="row" style="margin-bottom:20px;"><span class="muted">Paperclip health:</span> <strong id="health">checking...</strong></div>
 
       <div class="step">
-        <div class="step-num">Step 1 — AI adapter (optional)</div>
-        <div class="step-title">Authenticate Codex (OpenAI)</div>
-        <p class="muted" style="margin:0 0 10px 0; font-size:13px;">Only needed if you want agents to run. Set <code style="background:#1a1a1a; padding:2px 6px; border-radius:4px;">OPENAI_API_KEY</code> (and optionally <code style="background:#1a1a1a; padding:2px 6px; border-radius:4px;">ANTHROPIC_API_KEY</code>) in Railway variables, then run Codex login below. You can skip this and add keys later — the app works without them; agents will fail until keys are set.</p>
-        <div class="row" style="margin-bottom:8px;"><span id="codexStatus" class="status-pending">Codex: checking...</span></div>
-        <button id="codexLogin" type="button">Run Codex login</button>
+        <div class="step-num">Step 1 — AI adapters (optional)</div>
+        <div class="step-title">Codex &amp; Claude (OpenAI &amp; Anthropic)</div>
+        <p class="muted" style="margin:0 0 10px 0; font-size:13px;">Only needed if you want agents to run. Set <code style="background:#1a1a1a; padding:2px 6px; border-radius:4px;">OPENAI_API_KEY</code> and/or <code style="background:#1a1a1a; padding:2px 6px; border-radius:4px;">ANTHROPIC_API_KEY</code> in Railway variables. Codex requires a one-time login below; Claude uses the env key automatically. You can skip this and add keys later — the app works without them; agents will fail until keys are set.</p>
+        <div class="row" style="margin-bottom:6px;"><span id="codexStatus" class="status-pending">Codex: checking...</span></div>
+        <div class="row" style="margin-bottom:8px;"><span id="claudeStatus" class="status-pending">Claude: checking...</span></div>
+        <div class="row" style="margin-bottom:6px;"><button id="codexLogin" type="button">Run Codex login</button></div>
         <pre id="codexOutput" style="margin-top:10px; display:none;">-</pre>
       </div>
 
@@ -156,6 +157,7 @@ function setupHtml() {
       const codexBtn = document.getElementById("codexLogin");
       const codexOutput = document.getElementById("codexOutput");
       const codexStatusEl = document.getElementById("codexStatus");
+      const claudeStatusEl = document.getElementById("claudeStatus");
 
       async function refreshHealth() {
         try {
@@ -167,23 +169,34 @@ function setupHtml() {
         }
       }
 
-      async function refreshCodexStatus() {
+      async function refreshAiStatus() {
         try {
-          const res = await fetch("/setup/api/codex-status");
+          const res = await fetch("/setup/api/ai-status");
           const j = await res.json();
-          if (j.codexAuthenticated) {
+          const cx = j.codex || {};
+          const cl = j.claude || {};
+          if (cx.codexAuthenticated) {
             codexStatusEl.textContent = "Codex: ✓ authenticated";
             codexStatusEl.className = "status-ok";
-          } else if (j.openaiApiKeySet) {
+          } else if (cx.openaiApiKeySet) {
             codexStatusEl.textContent = "Codex: Not authenticated — run login below";
             codexStatusEl.className = "status-pending";
           } else {
             codexStatusEl.textContent = "Codex: Set OPENAI_API_KEY in Railway, then run login";
             codexStatusEl.className = "status-pending";
           }
+          if (cl.anthropicApiKeySet) {
+            claudeStatusEl.textContent = "Claude: ✓ API key set";
+            claudeStatusEl.className = "status-ok";
+          } else {
+            claudeStatusEl.textContent = "Claude: Set ANTHROPIC_API_KEY in Railway for Claude-based agents";
+            claudeStatusEl.className = "status-pending";
+          }
         } catch {
           codexStatusEl.textContent = "Codex: status unavailable";
           codexStatusEl.className = "status-pending";
+          claudeStatusEl.textContent = "Claude: status unavailable";
+          claudeStatusEl.className = "status-pending";
         }
       }
 
@@ -216,7 +229,7 @@ function setupHtml() {
           const res = await fetch("/setup/api/codex-login", { method: "POST" });
           const j = await res.json();
           codexOutput.textContent = j.output || JSON.stringify(j, null, 2);
-          await refreshCodexStatus();
+          await refreshAiStatus();
         } catch (err) {
           codexOutput.textContent = String(err);
         } finally {
@@ -225,9 +238,9 @@ function setupHtml() {
       };
 
       refreshHealth();
-      refreshCodexStatus();
+      refreshAiStatus();
       setInterval(refreshHealth, 5000);
-      setInterval(refreshCodexStatus, 10000);
+      setInterval(refreshAiStatus, 10000);
     </script>
   </body>
 </html>`;
@@ -350,8 +363,17 @@ function getCodexStatus() {
   return { codexAuthenticated, openaiApiKeySet };
 }
 
+function getClaudeStatus() {
+  const anthropicApiKeySet = Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+  return { anthropicApiKeySet };
+}
+
 app.get("/setup/api/codex-status", (_req, res) => {
   res.status(200).json(getCodexStatus());
+});
+
+app.get("/setup/api/ai-status", (_req, res) => {
+  res.status(200).json({ codex: getCodexStatus(), claude: getClaudeStatus() });
 });
 
 app.post("/setup/api/codex-login", async (_req, res) => {
