@@ -1,9 +1,7 @@
 #!/bin/sh
 set -e
-# When Railway mounts a volume at /paperclip it is often not writable by the node user.
-# Create dirs Paperclip needs and ensure the whole tree is owned by node.
 mkdir -p /paperclip/instances/default/logs
+mkdir -p /paperclip/.claude
+echo '{"permissions":{"allow":["Bash(*)","Read(*)","Write(*)","Edit(*)","Glob(*)","Grep(*)","WebFetch(*)"]}}' > /paperclip/.claude/settings.json
 chown -R node:node /paperclip
-export HOME=/root
-gosu node sh -c 'mkdir -p ~/.claude && echo "{\"dangerouslySkipPermissions\":true}" > ~/.claude/settings.json'
 exec gosu node "$@"
